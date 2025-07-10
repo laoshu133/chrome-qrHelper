@@ -9,6 +9,42 @@
 // Import dependencies for service worker
 importScripts('./jsqrcode.js', './config.js');
 
+// Global functions for loading animation and clipboard
+function showLoading(){
+	var count = 4, currInx = showLoading.currInx || 0;
+	var txt = new Array(currInx+1).join('.') + new Array(count-currInx+1).join(' ');
+	chrome.action.setBadgeText({ text:txt });
+
+	showLoading.timer = setTimeout(showLoading, 400);
+	showLoading.currInx = ++currInx % count;
+}
+
+function hideLoading(){
+	clearTimeout(showLoading.timer);
+	chrome.action.setBadgeText({ text:'' });
+}
+
+function setClipboard(text){
+	// Use the new clipboard API for service workers
+	chrome.action.setBadgeText({ text: '✓' });
+	setTimeout(() => {
+		chrome.action.setBadgeText({ text: '' });
+	}, 1000);
+	
+	// Copy to clipboard using chrome.scripting API
+	chrome.tabs.query({active: true, currentWindow: true}).then(tabs => {
+		if (tabs[0]) {
+			chrome.scripting.executeScript({
+				target: { tabId: tabs[0].id },
+				func: (textToCopy) => {
+					navigator.clipboard.writeText(textToCopy);
+				},
+				args: [text]
+			});
+		}
+	});
+}
+
 // Listen for messages from other parts of the extension
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	if (message.type === 'configChanged') {
@@ -21,20 +57,45 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 	if (info.menuItemId === 'qr_read_context_menu') {
 		showLoading();
 
-		qrcode.decode(info.srcUrl, function(text, data){
-			setClipboard(text);
-			hideLoading();
+		// First inject the content script if not already present
+		chrome.scripting.executeScript({
+			target: { tabId: tab.id },
+			files: ['js/jsqrcode.js', 'js/content-script.js']
+		}).then(() => {
+			// Now send message to content script to decode QR
+			return chrome.tabs.sendMessage(tab.id, {
+				type: 'decodeQR',
+				imageUrl: info.srcUrl
+			});
+		}).then((result) => {
+			if (result && result.success) {
+				setClipboard(result.text);
+				hideLoading();
 
-			var rurl = /^(?:https?|ftp|file|chrome):\/\/\w+/i;
-			if(rurl.test(text)){
-				chrome.tabs.create({ url:text });
+				var rurl = /^(?:https?|ftp|file|chrome):\/\/\w+/i;
+				if(rurl.test(result.text)){
+					chrome.tabs.create({ url: result.text });
+				} else {
+					chrome.tabs.sendMessage(tab.id, {
+						type: 'showAlert',
+						message: QRHelper.getLang('read_qr_txt_tips') + '\n\n' + result.text
+					});
+				}
+			} else {
+				hideLoading();
+				chrome.tabs.sendMessage(tab.id, {
+					type: 'showAlert',
+					message: result ? result.error : QRHelper.getLang('read_qr_error_2')
+				});
 			}
-			else{
-				alert(QRHelper.getLang('read_qr_txt_tips') +'\n\n' + text + '');
-			}
-		}, function(code, msg){
+		}).catch((error) => {
 			hideLoading();
-			alert(msg);
+			console.error('QR decode error:', error);
+			// Fallback: show error via notification or badge
+			chrome.action.setBadgeText({ text: '✗' });
+			setTimeout(() => {
+				chrome.action.setBadgeText({ text: '' });
+			}, 2000);
 		});
 	}
 });
@@ -65,41 +126,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 	function removeContextMenu(){
 		chrome.contextMenus.removeAll();
-	}
-
-	function setClipboard(text){
-		// Use the new clipboard API for service workers
-		chrome.action.setBadgeText({ text: '✓' });
-		setTimeout(() => {
-			chrome.action.setBadgeText({ text: '' });
-		}, 1000);
-		
-		// Copy to clipboard using chrome.scripting API
-		chrome.tabs.query({active: true, currentWindow: true}).then(tabs => {
-			if (tabs[0]) {
-				chrome.scripting.executeScript({
-					target: { tabId: tabs[0].id },
-					func: (textToCopy) => {
-						navigator.clipboard.writeText(textToCopy);
-					},
-					args: [text]
-				});
-			}
-		});
-	}
-
-	function showLoading(){
-		var count = 4, currInx = showLoading.currInx || 0;
-		var txt = new Array(currInx+1).join('.') + new Array(count-currInx+1).join(' ');
-		chrome.action.setBadgeText({ text:txt });
-
-		showLoading.timer = setTimeout(showLoading, 400);
-		showLoading.currInx = ++currInx % count;
-	}
-
-	function hideLoading(){
-		clearTimeout(showLoading.timer);
-		chrome.action.setBadgeText({ text:'' });
 	}
 })();
 
