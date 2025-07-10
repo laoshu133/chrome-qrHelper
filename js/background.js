@@ -6,6 +6,39 @@
 * @dep https://github.com/LazarSoft/jsqrcode
 */
 
+// Import dependencies for service worker
+importScripts('./jsqrcode.js', './config.js');
+
+// Listen for messages from other parts of the extension
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+	if (message.type === 'configChanged') {
+		QRHelper.fire('config');
+	}
+});
+
+// Listen for context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+	if (info.menuItemId === 'qr_read_context_menu') {
+		showLoading();
+
+		qrcode.decode(info.srcUrl, function(text, data){
+			setClipboard(text);
+			hideLoading();
+
+			var rurl = /^(?:https?|ftp|file|chrome):\/\/\w+/i;
+			if(rurl.test(text)){
+				chrome.tabs.create({ url:text });
+			}
+			else{
+				alert(QRHelper.getLang('read_qr_txt_tips') +'\n\n' + text + '');
+			}
+		}, function(code, msg){
+			hideLoading();
+			alert(msg);
+		});
+	}
+});
+
 ;(function(){
 	QRHelper.on('config', function(){
 		updateConfig();
@@ -13,38 +46,20 @@
 	updateConfig();
 
 	function updateConfig(configs){
-		var configs = QRHelper.getConfig();
-
-		removeContextMenu();
-		if(configs['qr_read_enabled']){
-			addContextMenu();
-		}
+		QRHelper.getConfig(null, (configs) => {
+			removeContextMenu();
+			if(configs['qr_read_enabled']){
+				addContextMenu();
+			}
+		});
 	}
 
 	function addContextMenu(){
 		chrome.contextMenus.create({
+			id: 'qr_read_context_menu',
 			type: 'normal',
 			contexts: ['image'],
-			title: QRHelper.getLang('read_qr_title'),
-			onclick: function(info, tab){
-				showLoading();
-
-				qrcode.decode(info.srcUrl, function(text, data){
-					setClipboard(text);
-					hideLoading();
-
-					var rurl = /^(?:https?|ftp|file|chrome):\/\/\w+/i;
-					if(rurl.test(text)){
-						chrome.tabs.create({ url:text });
-					}
-					else{
-						alert(QRHelper.getLang('read_qr_txt_tips') +'\n\n' + text + '');
-					}
-				}, function(code, msg){
-					hideLoading();
-					alert(msg);
-				});
-			}
+			title: QRHelper.getLang('read_qr_title')
 		});
 	}
 
@@ -53,22 +68,30 @@
 	}
 
 	function setClipboard(text){
-		var inpId = 'qr_helper_copy_inp', inp = document.getElementById(inpId);
-		if(!inp){
-			inp = document.createElement('input');
-			inp.id = inpId;
-			document.body.appendChild(inp);
-		}
-		inp.value = text;
-		inp.select();
-
-		document.execCommand('copy', false, null);
+		// Use the new clipboard API for service workers
+		chrome.action.setBadgeText({ text: '✓' });
+		setTimeout(() => {
+			chrome.action.setBadgeText({ text: '' });
+		}, 1000);
+		
+		// Copy to clipboard using chrome.scripting API
+		chrome.tabs.query({active: true, currentWindow: true}).then(tabs => {
+			if (tabs[0]) {
+				chrome.scripting.executeScript({
+					target: { tabId: tabs[0].id },
+					func: (textToCopy) => {
+						navigator.clipboard.writeText(textToCopy);
+					},
+					args: [text]
+				});
+			}
+		});
 	}
 
 	function showLoading(){
 		var count = 4, currInx = showLoading.currInx || 0;
 		var txt = new Array(currInx+1).join('.') + new Array(count-currInx+1).join(' ');
-		chrome.browserAction.setBadgeText({ text:txt });
+		chrome.action.setBadgeText({ text:txt });
 
 		showLoading.timer = setTimeout(showLoading, 400);
 		showLoading.currInx = ++currInx % count;
@@ -76,7 +99,7 @@
 
 	function hideLoading(){
 		clearTimeout(showLoading.timer);
-		chrome.browserAction.setBadgeText({ text:'' });
+		chrome.action.setBadgeText({ text:'' });
 	}
 })();
 
@@ -89,7 +112,7 @@
 *
 */
 ;(function(){
-	var qrcode = window.qrcode;
+	var qrcode = self.qrcode;
 
 	var _decode = qrcode.decode;
 	qrcode.decode = function(url, onsuccess, onerror) {
@@ -196,5 +219,5 @@
 	// 	}
 	// };
 
-	window.qrcode = qrcode;
+	self.qrcode = qrcode;
 })();

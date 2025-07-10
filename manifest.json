@@ -1,5 +1,5 @@
 {
-	"manifest_version": 2,
+	"manifest_version": 3,
 	"version": "0.2.1",
 	"name": "__MSG_name__",
 	"default_locale": "zh_CN",
@@ -8,13 +8,14 @@
 		"48": "images/icon_32.png",
 		"128": "images/logo.png"
 	},
-	"browser_action": {
+	"action": {
 		"default_icon": "images/icon_32.png",
 		"default_popup": "popup.html"
 	},
-	"permissions": [ "tabs", "contextMenus", "*://*/*" ],
+	"permissions": [ "contextMenus", "clipboardWrite", "scripting", "activeTab", "storage" ],
+	"host_permissions": [ "*://*/*" ],
 	"background": {
-		"scripts": [ "js/jsqrcode.js", "js/config.js", "js/background.js"]
+		"service_worker": "js/background.js"
 	},
 	"options_page": "options.html"
 }

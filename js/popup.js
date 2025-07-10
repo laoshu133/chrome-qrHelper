@@ -10,7 +10,7 @@ Zepto(function($) {
 	var qrPanel = $('#qr_panel');
 	var qrIcon = $('#qr_icon');
 
-	chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+	chrome.tabs.query({active: true, currentWindow: true}).then(function(tabs) {
 		var tab = tabs[0];
 
 		qrPanel.qrcode({

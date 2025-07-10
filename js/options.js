@@ -1,15 +1,15 @@
 Zepto(function($){
-	var configs = QRHelper.getConfig();
-
-	for(var k in configs){
-		var elem = $('#' + k)[0];
-		if(elem.type === 'checkbox' || elem.type === 'radio'){
-			elem.checked = !!configs[k];
+	QRHelper.getConfig(null, (configs) => {
+		for(var k in configs){
+			var elem = $('#' + k)[0];
+			if(elem && elem.type === 'checkbox' || elem.type === 'radio'){
+				elem.checked = !!configs[k];
+			}
+			else if(elem){
+				elem.value = configs[k];
+			}
 		}
-		else{
-			elem.value = configs[k];
-		}
-	}
+	});
 
 	function setConfig(elem){
 		var val = elem.value;
